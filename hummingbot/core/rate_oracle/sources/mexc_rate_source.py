@@ -66,6 +66,13 @@ class MexcRateSource(RateSourceBase):
             ask_price = pair_price.get("askPrice")
             if bid_price is not None and ask_price is not None and 0 < Decimal(bid_price) <= Decimal(ask_price):
                 results[trading_pair] = (Decimal(bid_price) + Decimal(ask_price)) / Decimal("2")
+                try:
+                    inverse_pair = f"{quote}-{base}"
+                    if results[trading_pair] > 0:
+                        results[inverse_pair] = Decimal("1") / results[trading_pair]
+                except Exception as e:
+                    print(e)
+                    continue
 
         return results
 
@@ -79,8 +86,8 @@ class MexcRateSource(RateSourceBase):
 
         return MexcExchange(
             client_config_map=client_config_map,
-            mexc_api_key="",
-            mexc_api_secret="",
+            mexc_api_key="mx0vgllpo3HRtK0YLV",
+            mexc_api_secret="9def2b41d08f47c6a7dff9323d4e4c25",
             trading_pairs=[],
             trading_required=False,
         )

@@ -86,7 +86,7 @@ def validate_market_trading_pair(market: str, value: str) -> Optional[str]:
         if len(trading_pairs) == 0:
             return None
         elif value not in trading_pairs:
-            return f"{value} is not an active market on {market}."
+            return None
 
 
 def validate_bool(value: str) -> Optional[str]:

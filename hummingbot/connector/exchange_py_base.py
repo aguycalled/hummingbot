@@ -917,7 +917,7 @@ class ExchangePyBase(ExchangeBase, ABC):
                     params=params,
                     data=data,
                     method=method,
-                    is_auth_required=is_auth_required,
+                    is_auth_required=True,
                     return_err=return_err,
                     throttler_limit_id=limit_id if limit_id else path_url,
                     headers=headers,
