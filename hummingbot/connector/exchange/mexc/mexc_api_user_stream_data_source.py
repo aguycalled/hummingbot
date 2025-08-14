@@ -22,8 +22,8 @@ class MexcAPIUserStreamDataSource(UserStreamTrackerDataSource):
     """
     LISTEN_KEY_KEEP_ALIVE_INTERVAL = 1800  # Recommended to Ping/Update listen key to keep connection alive
     HEARTBEAT_TIME_INTERVAL = 30.0
-    LISTEN_KEY_RETRY_INTERVAL = 5.0  # Delay between listen key management iterations
-    MAX_RETRIES = 3  # Maximum retries for obtaining a new listen key
+    LISTEN_KEY_RETRY_INTERVAL = 10.0  # Delay between listen key management iterations
+    MAX_RETRIES = 6  # Maximum retries for obtaining a new listen key
 
     _logger: Optional[HummingbotLogger] = None
 
@@ -164,6 +164,32 @@ class MexcAPIUserStreamDataSource(UserStreamTrackerDataSource):
                     is_auth_required=True,
                     timeout=timeout,
                 )
+                if "code" in data:
+                    self.logger().warning(f"Failed to refresh the listen key {self._current_listen_key}: {data}")
+                    if data["code"] == "730709":
+                        sessions = await rest_assistant.execute_request(
+                            url=web_utils.public_rest_url(path_url=CONSTANTS.MEXC_USER_STREAM_PATH_URL, domain=self._domain),
+                            method=RESTMethod.GET,
+                            throttler_limit_id=CONSTANTS.MEXC_USER_STREAM_PATH_URL,
+                            is_auth_required=True,
+                            timeout=timeout,
+                        )
+                        self.logger().warning(f"There are {len(sessions)} sessions {sessions}")
+
+                        if len(sessions["listenKey"]) > 40:
+                            for session_id in sessions["listenKey"][:20]:
+                                self.logger().warning(f"Deleting session {session_id}")
+                                data_ = await rest_assistant.execute_request(
+                                    url=web_utils.public_rest_url(path_url=CONSTANTS.MEXC_USER_STREAM_PATH_URL, domain=self._domain),
+                                    params={"listenKey": session_id},
+                                    method=RESTMethod.DELETE,
+                                    return_err=True,
+                                    throttler_limit_id=CONSTANTS.MEXC_USER_STREAM_PATH_URL,
+                                    is_auth_required=True
+                                )
+                                self.logger().warning(f"Data: {data_}")
+                    raise Exception(f"Listen key refresh failed: {data}")
+                self.logger().warning(f"{data}")
                 return data["listenKey"]
             except asyncio.CancelledError:
                 raise
@@ -213,6 +239,7 @@ class MexcAPIUserStreamDataSource(UserStreamTrackerDataSource):
         State is properly cleaned up in the finally block to ensure consistency.
         """
         self.logger().info("Starting listen key management task...")
+        rest_assistant = await self._api_factory.get_rest_assistant()
         try:
             while True:
                 try:
@@ -244,6 +271,20 @@ class MexcAPIUserStreamDataSource(UserStreamTrackerDataSource):
                 except Exception as e:
                     # Reset state on any error to force new key acquisition
                     self.logger().error(f"Error occurred renewing listen key ... {e}")
+
+                    try:
+                        data_ = await rest_assistant.execute_request(
+                            url=web_utils.public_rest_url(path_url=CONSTANTS.MEXC_USER_STREAM_PATH_URL, domain=self._domain),
+                            params={"listenKey": self._current_listen_key},
+                            method=RESTMethod.DELETE,
+                            return_err=True,
+                            throttler_limit_id=CONSTANTS.MEXC_USER_STREAM_PATH_URL,
+                            is_auth_required=True
+                        )
+                        self.logger().warning(f"Data: {data_}")
+                    except Exception:
+                        pass  # Ignore any exception from the task
+
                     self._current_listen_key = None
                     self._listen_key_initialized_event.clear()
                     await self._sleep(self.LISTEN_KEY_RETRY_INTERVAL)
@@ -251,6 +292,20 @@ class MexcAPIUserStreamDataSource(UserStreamTrackerDataSource):
             # Cleanup on task termination
             self.logger().info("Listen key management task stopped")
             await self._ws_assistant.disconnect()
+
+            try:
+                data_ = await rest_assistant.execute_request(
+                    url=web_utils.public_rest_url(path_url=CONSTANTS.MEXC_USER_STREAM_PATH_URL, domain=self._domain),
+                    params={"listenKey": self._current_listen_key},
+                    method=RESTMethod.DELETE,
+                    return_err=True,
+                    throttler_limit_id=CONSTANTS.MEXC_USER_STREAM_PATH_URL,
+                    is_auth_required=True
+                )
+                self.logger().warning(f"Data: {data_}")
+            except Exception:
+                pass  # Ignore any exception from the task
+
             self._current_listen_key = None
             self._listen_key_initialized_event.clear()
 
@@ -295,6 +350,21 @@ class MexcAPIUserStreamDataSource(UserStreamTrackerDataSource):
         # Disconnect the websocket if it exists
         websocket_assistant and await websocket_assistant.disconnect()
         # Force new listen key acquisition on reconnection
+        rest_assistant = await self._api_factory.get_rest_assistant()
+
+        try:
+            data_ = await rest_assistant.execute_request(
+                url=web_utils.public_rest_url(path_url=CONSTANTS.MEXC_USER_STREAM_PATH_URL, domain=self._domain),
+                params={"listenKey": self._current_listen_key},
+                method=RESTMethod.DELETE,
+                return_err=True,
+                throttler_limit_id=CONSTANTS.MEXC_USER_STREAM_PATH_URL,
+                is_auth_required=True
+            )
+            self.logger().warning(f"Data: {data_}")
+        except Exception:
+            pass  # Ignore any exception from the task
+
         self._current_listen_key = None
         self._listen_key_initialized_event.clear()
 

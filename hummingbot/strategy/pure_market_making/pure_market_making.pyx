@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal
 from math import ceil, floor
 from typing import Dict, List, Optional
+import random
 
 import numpy as np
 import pandas as pd
@@ -848,9 +849,17 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
     cdef c_apply_price_band(self, proposal):
         if self._price_ceiling > 0 and self.get_price() >= self._price_ceiling:
-            proposal.buys = []
+            delta = self.get_price() - self._price_ceiling
+            for buy in proposal.buys:
+                buy.price = buy.price - delta
         if self._price_floor > 0 and self.get_price() <= self._price_floor:
-            proposal.sells = []
+            delta = self._price_floor - self.get_price()
+            for sell in proposal.sells:
+                sell.price = sell.price + delta
+        for buy in proposal.buys:
+            buy.size = buy.size * Decimal(1 + (random.randint(0,400)-200)/10000)
+        for sell in proposal.sells:
+            sell.size = sell.size * Decimal(1 + (random.randint(0,400)-200)/10000)
 
     cdef c_apply_moving_price_band(self, proposal):
         price = self.get_price()
@@ -1267,7 +1276,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     buy.size,
                     order_type=self._limit_order_type,
                     price=buy.price,
-                    expiration_seconds=expiration_seconds
+                    expiration_seconds=expiration_seconds + random.randint(1, 7)
                 )
                 orders_created = True
                 if idx < number_of_pairs:
@@ -1290,7 +1299,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     sell.size,
                     order_type=self._limit_order_type,
                     price=sell.price,
-                    expiration_seconds=expiration_seconds
+                    expiration_seconds=expiration_seconds + random.randint(1, 7)
                 )
                 orders_created = True
                 if idx < number_of_pairs:
